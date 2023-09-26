@@ -1,0 +1,154 @@
+<?php
+
+use Freento\AuditCodeSniffer\Block\Adminhtml\Report;
+
+/** @var Report $block */
+/** @var Magento\Framework\Escaper $escaper */
+?>
+
+<div class="freento-auditcodesniffer-report-grid report-data">
+    <div class="report-description">
+        <p>
+            <?= $escaper->escapeHtml(
+                __(
+                    'This report displays the result of the automated code quality audit against Magento Coding '
+                    . 'Standards.'
+                )
+            ) ?>
+        </p>
+        <p>
+            <?= $escaper->escapeHtml(
+                __(
+                    'The below legend explains the difference between '
+                    . '<span class="%error_css_class term">ERROR</span> and '
+                    . '<span class="%warning_css_class term">WARNING</span> severity levels.',
+                    [
+                        'error_css_class' => Report::ERROR_CSS_CLASS,
+                        'warning_css_class' => Report::WARNING_CSS_CLASS
+                    ]
+                ),
+                ['span']
+            ) ?>
+        </p>
+        <div class="definitions">
+            <p>
+                <?= $escaper->escapeHtml(
+                    __(
+                        '<span class="%error_css_class term">ERROR</span> is a critical code issue that indicate '
+                        . 'a bug or security vulnerability.',
+                        ['error_css_class' => Report::ERROR_CSS_CLASS]
+                    ),
+                    ['span']
+                ) ?>
+            </p>
+            <p>
+                <?= $escaper->escapeHtml(
+                    __(
+                        '<span class="%warning_css_class term">WARNING</span> is a possible security, design, '
+                        . 'code style or formatting issue.',
+                        ['warning_css_class' => Report::WARNING_CSS_CLASS]
+                    ),
+                    ['span']
+                ) ?>
+            </p>
+        </div>
+        <p>
+            <?= // @noEscape
+            __(
+                'The report contains only custom and third-party modules installed directly to the app/code '
+                . 'directory, please <a href="%link" rel="noopener noreferrer" target="_blank">contact us</a> if '
+                . 'you would like to additionally audit the code quality of third-party modules installed via '
+                . 'Composer.',
+                ['link' => 'https://freento.com/contact']
+            ) ?>
+        </p>
+    </div>
+    <?php $report = $block->getReport() ?>
+    <?php if (empty($report['modules'])): ?>
+        <div class="cs-report-message">
+            <p>
+                <?= $escaper->escapeHtml(
+                    __(
+                        'There are no extensions installed in %1 yet so we have no code to validate.',
+                        \Freento\AuditCodeSniffer\Model\PHPCSReport::CODE_DIR
+                    )
+                ) ?>
+            </p>
+        </div>
+    <?php elseif ($report['code'] === 0): ?>
+        <div class="cs-report-message">
+            <h2><?= $escaper->escapeHtml(__('Congratulations!')) ?></h2>
+            <p>
+                <?= $escaper->escapeHtml(
+                    __('Extensions installed in app/code do not have any code quality issues based on the Magento '
+                        . 'Code Sniffer report.')
+                ) ?>
+            </p>
+        </div>
+    <?php else: ?>
+    <div data-mage-init='{
+        "accordion":{
+            "active": false,
+            "collapsible": true,
+            "openedState": "active",
+            "multipleCollapsible": true
+        }}'>
+        <?php foreach ($report['modules'] as $modulePath => $moduleReport): ?>
+            <?php if (empty($moduleReport['errors']) && empty($moduleReport['warnings'])):
+                continue;
+            endif; ?>
+            <div data-role="collapsible" class="admin__collapsible-block-wrapper admin__fieldset-wrapper-content">
+                <div data-role="trigger">
+                    <div class="admin__collapsible-title">
+                        <span>
+                            <?= $escaper->escapeHtml(__('Module name: ') . $moduleReport['name']) ?>
+                        </span><br/>
+                        <span class="note">
+                            <?= $escaper->escapeHtml(__('Module path: ') . $modulePath) ?>
+                        </span><br/>
+                        <span class="note">
+                            <?= $escaper->escapeHtml($block->showErrorsWarnings($moduleReport)) ?>
+                        </span>
+                    </div>
+                </div>
+                <div data-role="content" class="admin__fieldset">
+                    <table class="data-grid">
+                        <tr>
+                            <th class="data-grid-th phpcs-line"><?= $escaper->escapeHtml(__('Line')) ?></th>
+                            <th class="data-grid-th phpcs-severity"><?= $escaper->escapeHtml(__('Severity')) ?></th>
+                            <th class="data-grid-th phpcs-message"><?= $escaper->escapeHtml(__('Message')) ?></th>
+                        </tr>
+                        <?php foreach ($moduleReport['files'] ?? [] as $filepath => $fileReport): ?>
+                            <?php if (empty($fileReport['messages'])):
+                                continue;
+                            endif; ?>
+                            <tr class="file-title-cell">
+                                <td colspan="3">
+                                    <span class="file-name"><?= $escaper->escapeHtml($filepath) ?></span><br>
+                                    <span class="note">
+                                        <?= $escaper->escapeHtml($block->showErrorsWarnings($fileReport)) ?>
+                                    </span>
+                                </td>
+                            </tr>
+                            <?php $odd = false; ?>
+                            <?php foreach ($fileReport['messages'] as $message): ?>
+                                <tr <?= $odd ? 'class="_odd-row"' : '' ?>>
+                                    <td><span><?= $escaper->escapeHtml($message['line'] ?? '') ?></span></td>
+                                    <?php $severityCssClass = $block->getSeverityCssClass($message['type'] ?? ''); ?>
+                                    <td>
+                                        <span class="<?= $escaper->escapeHtmlAttr($severityCssClass) ?>">
+                                            <?= $escaper->escapeHtml($message['type'] ?? '') ?>
+                                        </span>
+                                    </td>
+                                    <td><span><?= $escaper->escapeHtml($message['message'] ?? '') ?></span></td>
+                                </tr>
+                                <?php $odd = !$odd; ?>
+                            <?php endforeach; ?>
+                        <?php endforeach; ?>
+                    </table>
+                </div>
+            </div>
+        <?php endforeach; ?>
+        <?php endif; ?>
+    </div>
+</div>
