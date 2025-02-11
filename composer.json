@@ -2,13 +2,14 @@
     "name": "freento/audit-code-sniffer",
     "description": "PHP code sniffer against Magento2 coding standard (submodule of freento/audit-report)",
     "type": "magento2-module",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "license": [
         "OSL-3.0",
         "AFL-3.0"
     ],
     "require": {
-        "php": "~7.4.0||~8.0"
+        "php": "~7.4.0||~8.0",
+        "magento/magento-coding-standard": "*"
     },
     "autoload": {
         "psr-4": { "Freento\\AuditCodeSniffer\\": "" },

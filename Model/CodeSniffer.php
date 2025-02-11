@@ -6,9 +6,10 @@ namespace Freento\AuditCodeSniffer\Model;
 
 use Freento\AuditCodeSniffer\Api\CodeSnifferInterface;
 use Freento\AuditCodeSniffer\Api\Data\PHPCSReportInterface;
+use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Filesystem\DirectoryList;
 use Magento\Framework\Filesystem\Driver\File;
-use PHP_CodeSniffer\Runner;
+use Magento\Framework\Shell\CommandRendererInterface;
 use Symfony\Component\Filesystem\Exception\FileNotFoundException;
 
 class CodeSniffer implements CodeSnifferInterface
@@ -29,15 +30,26 @@ class CodeSniffer implements CodeSnifferInterface
     private PHPCSReportFactory $phpCsReportFactory;
 
     /**
+     * @var CommandRendererInterface
+     */
+    private CommandRendererInterface $commandRenderer;
+
+    /**
      * @param File $file
      * @param DirectoryList $directoryList
      * @param PHPCSReportFactory $phpCsReportFactory
+     * @param CommandRendererInterface $commandRenderer
      */
-    public function __construct(File $file, DirectoryList $directoryList, PHPCSReportFactory $phpCsReportFactory)
-    {
+    public function __construct(
+        File $file,
+        DirectoryList $directoryList,
+        PHPCSReportFactory $phpCsReportFactory,
+        CommandRendererInterface $commandRenderer
+    ) {
         $this->file = $file;
         $this->directoryList = $directoryList;
         $this->phpCsReportFactory = $phpCsReportFactory;
+        $this->commandRenderer = $commandRenderer;
     }
 
     /**
@@ -45,44 +57,47 @@ class CodeSniffer implements CodeSnifferInterface
      */
     public function run($dir): PHPCSReportInterface
     {
-        $autoload = $this->directoryList->getRoot()
-            . DIRECTORY_SEPARATOR . 'vendor'
-            . DIRECTORY_SEPARATOR . 'squizlabs'
-            . DIRECTORY_SEPARATOR . 'php_codesniffer'
-            . DIRECTORY_SEPARATOR . 'autoload.php';
-
-        if ($this->file->isExists($autoload)) {
-            // phpcs:ignore Magento2.Security.IncludeFile
-            require_once $autoload;
-        } else {
-            throw new FileNotFoundException(__('Code sniffer autoload not found')->render());
-        }
-
-        $basename = __FILE__;
         $path = $this->directoryList->getRoot() . DIRECTORY_SEPARATOR . $dir;
         if (!$this->file->isExists($path)) {
             throw new FileNotFoundException(__('Specified path doesn\'t exist')->render());
         }
 
-        // phpcs:ignore Magento2.Security.Superglobal.SuperglobalUsageWarning
-        $_SERVER['argv'] = [
-            $basename,
-            '--standard=Magento2',
-            '--report=json',
-            $path
-        ];
+        $phpcsPath = $this->directoryList->getRoot() . '/vendor/bin/phpcs';
+        if (!$this->file->isExists($phpcsPath) || !$this->file->isFile($phpcsPath)) {
+            throw new FileNotFoundException(__('PHP CS executable not found')->render());
+        }
 
-        $runner = new Runner();
+        $command = $this->commandRenderer->render(
+            $phpcsPath . ' %s %s %s',
+            [$path, '--standard=Magento2', '--report=json']
+        );
 
-        // phpcs:ignore Magento2.Functions.DiscouragedFunction
-        ob_start();
-        $code = $runner->runPHPCS();
-        $response = ob_get_clean();
-        $report = $response;
+        /*
+         * \Magento\Framework\Shell::execute treats non-zero exit codes as an execution error and throws an exception.
+         * But phpcs returns 1 or 2 if execution was successful and code issues are found. So we should use exec()
+        */
+        if (!function_exists('exec')) {
+            throw new LocalizedException(__('The exec function is disabled.'));
+        }
+
+        try {
+            // phpcs:ignore Magento2.Security.InsecureFunction
+            exec($command, $output, $code);
+        } catch (\ValueError $e) {
+            throw new LocalizedException(__('exec() command must not be empty'), $e);
+        }
+
+        if (empty($output)) {
+            throw new LocalizedException(__('Code sniffer didn\'t return any data'));
+        }
+
+        if (!in_array($code, [0, 1, 2])) {
+            throw new LocalizedException(__('Code sniffer execution error: %1', $output[0]));
+        }
 
         $phpCsReport = $this->phpCsReportFactory->create();
         $phpCsReport->setCode($code);
-        $phpCsReport->setReport($report);
+        $phpCsReport->setReport($output[0]);
 
         return $phpCsReport;
     }
